@@ -1,0 +1,156 @@
+# This example shows how to fake a Shelly EM device responding to UDP requests
+# It listens for specific UDP messages and responds with power measurement data
+
+# You should change the id's of the sensors to match your configuration
+
+esphome:
+  name: udp-server-example
+  platform: ESP32
+  board: esp32dev
+
+wifi:
+  ssid: "YourSSID"
+  password: "YourPassword"
+
+external_components:
+  - source: github://jsimonetti/esphome-udpserver
+    components: [ udpserver ]
+
+udpserver:
+  id: fake_shelly_em
+  listen_port: 1010
+  allowed_ips:
+    - 10.10.4.12
+  on_string_data:
+    - text_filter: "\"method\":\"EM.GetStatus\""
+      filter_mode: CONTAINS
+      then:
+        - lambda: |-
+            char buf[512];
+            float l1_in = id(power_delivered_l1).state * 1000; // Convert kW to W
+            float l1_out = id(power_returned_l1).state * 1000; // Convert kW to W
+            float l2_in = id(power_delivered_l2).state * 1000; // Convert kW to W
+            float l2_out = id(power_returned_l2).state * 1000; // Convert kW to W
+            float l3_in = id(power_delivered_l3).state * 1000; // Convert kW to W
+            float l3_out = id(power_returned_l3).state * 1000; // Convert kW to W
+
+            float l1 = l1_in - l1_out; // Net power
+            float l2 = l2_in - l2_out; // Net power
+            float l3 = l3_in - l3_out; // Net power
+            float total = l1 + l2 + l3; // Total power
+
+            int len = snprintf(buf, sizeof(buf),
+              "{"
+                "\"id\":0,"
+                "\"src\":\"shellypro3em-e682e89c1724\","
+                "\"dst\":\"unknown\","
+                "\"result\":{"
+                  "\"a_act_power\":%.1f,"
+                  "\"b_act_power\":%.1f,"
+                  "\"c_act_power\":%.1f,"
+                  "\"total_act_power\":%.3f"
+                "}"
+              "}",
+            l1,
+            l2,
+            l3,
+            total
+            ); // Format the JSON response
+            
+            // Send a response back to the sender
+            udp.send_response(buf);
+
+
+# Template sensors for fake power readings with random values between -1000 and 1000 watts
+sensor:
+  # L1 Power Delivered (positive values simulate power consumption)
+  - platform: template
+    id: power_delivered_l1
+    name: "L1 Power Delivered"
+    unit_of_measurement: "kW"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 3
+    lambda: |-
+      // Generate random value between 0 and 1000W, convert to kW
+      float random_val = (rand() % 1001) / 1000.0;
+      return random_val;
+    update_interval: 5s
+
+  # L1 Power Returned (positive values simulate power generation/return)
+  - platform: template
+    id: power_returned_l1
+    name: "L1 Power Returned"
+    unit_of_measurement: "kW"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 3
+    lambda: |-
+      // Generate random value between 0 and 1000W, convert to kW
+      float random_val = (rand() % 1001) / 1000.0;
+      return random_val;
+    update_interval: 5s
+
+  # L2 Power Delivered (positive values simulate power generation/return)
+  - platform: template
+    id: power_delivered_l2
+    name: "L2 Power Delivered"
+    unit_of_measurement: "kW"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 3
+    lambda: |-
+      // Generate random value between 0 and 1000W, convert to kW
+      float random_val = (rand() % 1001) / 1000.0;
+      return random_val;
+    update_interval: 5s
+
+  # L2 Power Returned (positive values simulate power generation/return)
+  - platform: template
+    id: power_returned_l2
+    name: "L2 Power Returned"
+    unit_of_measurement: "kW"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 3
+    lambda: |-
+      // Generate random value between 0 and 1000W, convert to kW
+      float random_val = (rand() % 1001) / 1000.0;
+      return random_val;
+    update_interval: 5s
+
+  # L3 Power Delivered (positive values simulate power generation/return)
+  - platform: template
+    id: power_delivered_l3
+    name: "L3 Power Delivered"
+    unit_of_measurement: "kW"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 3
+    lambda: |-
+      // Generate random value between 0 and 1000W, convert to kW
+      float random_val = (rand() % 1001) / 1000.0;
+      return random_val;
+    update_interval: 5s
+
+  # L3 Power Returned (positive values simulate power generation/return)
+  - platform: template
+    id: power_returned_l3
+    name: "L3 Power Returned"
+    unit_of_measurement: "kW"
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 3
+    lambda: |-
+      // Generate random value between 0 and 1000W, convert to kW
+      float random_val = (rand() % 1001) / 1000.0;
+      return random_val;
+    update_interval: 5s
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable OTA updates
+ota:
+  platform: esphome

@@ -1,0 +1,223 @@
+# ESPHome UDP Server Component - Filtering Examples
+# Demonstrates IP filtering and text matching features
+
+esphome:
+  name: udp-server-filtering-example
+  platform: ESP32
+  board: esp32dev
+
+wifi:
+  ssid: "YourSSID"
+  password: "YourPassword"
+
+logger:
+  level: DEBUG
+
+# ============================================================================
+# Example 1: IP Filtering
+# Only allow specific IP addresses to send UDP messages
+# ============================================================================
+
+udpserver:
+  id: secure_udp
+  listen_port: 8888
+  allowed_ips:
+    - "192.168.1.100"  # Only allow this IP
+    - "192.168.1.101"  # And this one
+    - "10.0.0.50"      # And this one
+  on_string_data:
+    - then:
+        - logger.log:
+            format: "Authorized message from %s: %s"
+            args: ['udp.get_remote_ip()', 'data.c_str()']
+        - lambda: |-
+            udp.send_response("Message accepted");
+
+# ============================================================================
+# Example 2: Text Filtering - CONTAINS
+# Only trigger if message contains specific text
+# ============================================================================
+
+udpserver:
+  id: command_udp
+  listen_port: 9000
+  on_string_data:
+    - text_filter: "CMD:"
+      filter_mode: CONTAINS
+      then:
+        - logger.log: "Command received!"
+        - lambda: |-
+            // Extract command after "CMD:"
+            size_t pos = data.find("CMD:");
+            if (pos != std::string::npos) {
+              std::string cmd = data.substr(pos + 4);
+              ESP_LOGI("udp", "Executing: %s", cmd.c_str());
+              udp.send_response("Command executed: " + cmd);
+            }
+
+# ============================================================================
+# Example 3: Text Filtering - STARTS_WITH
+# Only trigger if message starts with specific text
+# ============================================================================
+
+udpserver:
+  id: api_udp
+  listen_port: 9001
+  on_string_data:
+    - text_filter: "API:"
+      filter_mode: STARTS_WITH
+      then:
+        - lambda: |-
+            std::string response = "{\"status\":\"ok\",\"message\":\"" + data + "\"}";
+            udp.send_response(response);
+
+# ============================================================================
+# Example 4: Text Filtering - ENDS_WITH
+# Only trigger if message ends with specific text
+# ============================================================================
+
+udpserver:
+  id: query_udp
+  listen_port: 9002
+  on_string_data:
+    - text_filter: "?"
+      filter_mode: ENDS_WITH
+      then:
+        - logger.log: "Query received!"
+        - lambda: |-
+            udp.send_response("Answer: 42");
+
+# ============================================================================
+# Example 5: Text Filtering - EQUALS
+# Only trigger if message exactly matches
+# ============================================================================
+
+udpserver:
+  id: ping_udp
+  listen_port: 9003
+  on_string_data:
+    - text_filter: "ping"
+      filter_mode: EQUALS
+      then:
+        - lambda: |-
+            udp.send_response("pong");
+    
+    - text_filter: "status"
+      filter_mode: EQUALS
+      then:
+        - lambda: |-
+            udp.send_response("Status: Online");
+
+# ============================================================================
+# Example 6: Multiple Triggers with Different Filters
+# Create a command router with different handlers
+# ============================================================================
+
+switch:
+  - platform: gpio
+    pin: GPIO2
+    id: relay1
+    name: "Relay 1"
+
+udpserver:
+  id: router_udp
+  listen_port: 8080
+  allowed_ips:
+    - "192.168.1.0/24"  # Allow entire subnet
+  on_string_data:
+    # Handle relay commands
+    - text_filter: "relay"
+      filter_mode: CONTAINS
+      then:
+        - lambda: |-
+            if (data.find("relay on") != std::string::npos) {
+              id(relay1).turn_on();
+              udp.send_response("OK: Relay ON");
+            } else if (data.find("relay off") != std::string::npos) {
+              id(relay1).turn_off();
+              udp.send_response("OK: Relay OFF");
+            } else if (data.find("relay status") != std::string::npos) {
+              std::string status = id(relay1).state ? "ON" : "OFF";
+              udp.send_response("Relay: " + status);
+            } else {
+              udp.send_response("ERROR: Unknown relay command");
+            }
+    
+    # Handle info requests
+    - text_filter: "info"
+      filter_mode: EQUALS
+      then:
+        - lambda: |-
+            std::string info = "Device: ESP32, IP: " + 
+                             std::string(udp.get_remote_ip()) + 
+                             ", Uptime: " + to_string(millis() / 1000) + "s";
+            udp.send_response(info);
+    
+    # Handle ping
+    - text_filter: "ping"
+      filter_mode: EQUALS
+      then:
+        - lambda: |-
+            udp.send_response("pong");
+    
+    # Catch-all for unfiltered messages
+    - then:
+        - lambda: |-
+            ESP_LOGW("udp", "Unknown command: %s", data.c_str());
+            udp.send_response("ERROR: Unknown command. Try: relay on/off/status, info, ping");
+
+# ============================================================================
+# Example 7: Combining IP and Text Filters
+# Secure admin commands that require both IP whitelist and command prefix
+# ============================================================================
+
+udpserver:
+  id: admin_udp
+  listen_port: 9999
+  allowed_ips:
+    - "192.168.1.10"  # Admin workstation only
+  on_string_data:
+    - text_filter: "ADMIN:"
+      filter_mode: STARTS_WITH
+      then:
+        - logger.log:
+            format: "Admin command from %s: %s"
+            args: ['udp.get_remote_ip()', 'data.c_str()']
+        - lambda: |-
+            std::string cmd = data.substr(6); // Remove "ADMIN:" prefix
+            
+            if (cmd == "restart") {
+              udp.send_response("Restarting...");
+              ESP.restart();
+            } else if (cmd == "safe_mode") {
+              udp.send_response("Entering safe mode...");
+              // Enter safe mode logic
+            } else {
+              udp.send_response("Unknown admin command");
+            }
+
+# ============================================================================
+# Testing Examples
+# ============================================================================
+
+# Test IP filtering:
+# echo "test" | nc -u -w1 192.168.1.100 8888   # Allowed
+# echo "test" | nc -u -w1 192.168.1.200 8888   # Blocked
+
+# Test text filtering (contains):
+# echo "CMD:turn_on" | nc -u -w1 <ESP_IP> 9000   # Triggers
+# echo "turn_on" | nc -u -w1 <ESP_IP> 9000       # Doesn't trigger
+
+# Test text filtering (starts_with):
+# echo "API:get_status" | nc -u -w1 <ESP_IP> 9001   # Triggers
+# echo "get_status API:" | nc -u -w1 <ESP_IP> 9001   # Doesn't trigger
+
+# Test text filtering (equals):
+# echo "ping" | nc -u -w1 <ESP_IP> 9003   # Triggers
+# echo "ping!" | nc -u -w1 <ESP_IP> 9003  # Doesn't trigger
+
+# Test multiple filters:
+# echo "relay on" | nc -u -w1 <ESP_IP> 8080
+# echo "relay status" | nc -u -w1 <ESP_IP> 8080
+# echo "info" | nc -u -w1 <ESP_IP> 8080
+# echo "ping" | nc -u -w1 <ESP_IP> 8080

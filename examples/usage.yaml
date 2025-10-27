@@ -1,0 +1,98 @@
+# ESPHome UDP Server Component - Usage Example
+# This example shows how to receive UDP messages and send responses back
+
+esphome:
+  name: udp-server-example
+  platform: ESP32
+  board: esp32dev
+
+wifi:
+  ssid: "YourSSID"
+  password: "YourPassword"
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# UDP Server Component Configuration
+udpserver:
+  listen_port: 8888
+  on_string_data:
+    - then:
+        - logger.log:
+            format: "Received UDP data: %s from %s:%d"
+            args: ['data.c_str()', 'udp.get_remote_ip()', 'udp.get_remote_port()']
+        
+        # Example 1: Send a simple acknowledgment
+        - lambda: |-
+            udp.send_response("ACK: Message received");
+        
+        # Example 2: Echo back the received data
+        - lambda: |-
+            std::string response = "ECHO: " + data;
+            udp.send_response(response);
+        
+        # Example 3: Conditional response based on content
+        - lambda: |-
+            if (data == "ping") {
+              udp.send_response("pong");
+            } else if (data.find("status") != std::string::npos) {
+              udp.send_response("Status: OK");
+            } else {
+              udp.send_response("Unknown command: " + data);
+            }
+
+# Example 4: Integration with other ESPHome components
+switch:
+  - platform: gpio
+    pin: GPIO2
+    id: relay1
+    name: "Relay 1"
+
+# UDP Server with switch control
+udpserver:
+  id: my_udp_server
+  listen_port: 9999
+  on_string_data:
+    - then:
+        - lambda: |-
+            ESP_LOGD("udp", "Processing command: %s", data.c_str());
+            
+            if (data == "relay_on") {
+              id(relay1).turn_on();
+              udp.send_response("OK: Relay turned ON");
+            } 
+            else if (data == "relay_off") {
+              id(relay1).turn_off();
+              udp.send_response("OK: Relay turned OFF");
+            }
+            else if (data == "relay_status") {
+              std::string status = id(relay1).state ? "ON" : "OFF";
+              udp.send_response("Relay status: " + status);
+            }
+            else {
+              udp.send_response("ERROR: Unknown command");
+            }
+
+# Testing the UDP server:
+# 
+# 1. From Linux/Mac terminal:
+#    echo "ping" | nc -u -w1 <ESP_IP> 8888
+#    echo "relay_on" | nc -u -w1 <ESP_IP> 9999
+#
+# 2. From Python:
+#    import socket
+#    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#    sock.sendto(b"ping", ("<ESP_IP>", 8888))
+#    response, addr = sock.recvfrom(1024)
+#    print(f"Response: {response.decode()}")
+#
+# 3. From Node.js:
+#    const dgram = require('dgram');
+#    const client = dgram.createSocket('udp4');
+#    client.send('ping', 8888, '<ESP_IP>', (err) => {
+#      client.on('message', (msg, rinfo) => {
+#        console.log(`Response: ${msg}`);
+#        client.close();
+#      });
+#    });
