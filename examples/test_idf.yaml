@@ -1,0 +1,45 @@
+# ESPHome UDP Server - ESP-IDF Framework Test Configuration
+esphome:
+  name: udpserver-idf-test
+
+# Use ESP-IDF framework
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+    version: recommended
+
+wifi:
+  ssid: "TestSSID"
+  password: "TestPassword"
+  manual_ip:
+    static_ip: 192.168.1.100
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0
+
+# Enable logging
+logger:
+  level: DEBUG
+  baud_rate: 115200
+
+# UDP Server component
+external_components:
+  - source: 
+      type: local
+      path: ../components
+    components: [ udpserver ]
+
+udpserver:
+  listen_port: 8888
+  on_string_data:
+    - then:
+        - logger.log:
+            format: "ESP-IDF UDP RX [%s:%d]: %s"
+            args: ['udp.get_remote_ip()', 'udp.get_remote_port()', 'data.c_str()']
+        - lambda: |-
+            std::string response = "IDF-ACK:" + data;
+            if (udp.send_response(response)) {
+              ESP_LOGI("udpserver", "Response sent successfully");
+            } else {
+              ESP_LOGE("udpserver", "Failed to send response");
+            }

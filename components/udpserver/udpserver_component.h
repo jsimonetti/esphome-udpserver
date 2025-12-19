@@ -2,11 +2,20 @@
 
 #include <string>
 #include <queue>
+#include <memory>
 
 #include "esphome.h"
 #include "esphome/core/component.h"
 
-#include "WiFiUdp.h"
+#include "udp_socket_base.h"
+
+#ifdef USE_ARDUINO
+#include "udp_socket_arduino.h"
+#endif
+
+#ifdef USE_ESP_IDF
+#include "udp_socket_idf.h"
+#endif
 
 
 #define TAG "udpserver"
@@ -18,7 +27,7 @@ namespace esphome {
     // Helper class to store UDP response context
     class UDPContext {
     public:
-      UDPContext(WiFiUDP* udp_ptr, const char* ip, uint16_t port) 
+      UDPContext(UDPSocketBase* udp_ptr, const char* ip, uint16_t port) 
         : udp_(udp_ptr), remote_ip_(ip), remote_port_(port) {}
       
       // Send a response back to the sender
@@ -34,14 +43,14 @@ namespace esphome {
       uint16_t get_remote_port() const { return remote_port_; }
 
     private:
-      WiFiUDP* udp_;
+      UDPSocketBase* udp_;
       const char* remote_ip_;
       uint16_t remote_port_;
     };
 
     class UdpserverComponent : public Component {
     public:
-      UdpserverComponent() = default;
+      UdpserverComponent();
       void setup() override;
       void loop() override;
 
@@ -57,7 +66,7 @@ namespace esphome {
         bool is_ip_allowed(const char* ip);
 
         uint16_t port_{8888};
-        WiFiUDP udp{};
+        std::unique_ptr<UDPSocketBase> udp_;
         std::vector<OnStringDataTrigger *> string_triggers_{};
         std::vector<std::string> allowed_ips_{};
         bool allow_all_ips_{true};

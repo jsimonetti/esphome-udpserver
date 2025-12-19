@@ -12,6 +12,19 @@ namespace esphome {
 
         static const size_t MAX_PACKET_SIZE = 1400;
 
+        UdpserverComponent::UdpserverComponent() {
+            // Create the appropriate UDP socket implementation based on framework
+            #ifdef USE_ARDUINO
+            udp_ = std::make_unique<UDPSocketArduino>();
+            ESP_LOGD(TAG, "Using Arduino UDP socket implementation");
+            #elif defined(USE_ESP_IDF)
+            udp_ = std::make_unique<UDPSocketIDF>();
+            ESP_LOGD(TAG, "Using ESP-IDF UDP socket implementation");
+            #else
+            #error "No UDP socket implementation available. Define USE_ARDUINO or USE_ESP_IDF"
+            #endif
+        }
+
         void UdpserverComponent::setup() {
             ESP_LOGCONFIG(TAG, "Setting up UDP Server on port %d...", this->port_);
             // Don't start UDP here - network may not be ready yet
@@ -41,7 +54,7 @@ namespace esphome {
             ESP_LOGD(TAG, "Processing data, length=%d, data=%s", len, (char*)buf);
 
             // Create UDP context for response capability
-            UDPContext udp_ctx(&udp, remote_ip, remote_port);
+            UDPContext udp_ctx(udp_.get(), remote_ip, remote_port);
             std::string data_str((char*)buf, len);
 
             // Trigger all registered string data triggers with data and context
@@ -111,7 +124,7 @@ namespace esphome {
 #endif
                 
                 ESP_LOGI(TAG, "Network ready, starting UDP server on port %d", this->port_);
-                if (!udp.begin(this->port_)) {
+                if (!udp_->begin(this->port_)) {
                     ESP_LOGE(TAG, "Failed to start UDP server on port %d", this->port_);
                     this->mark_failed();
                     return;
@@ -120,7 +133,7 @@ namespace esphome {
                 ESP_LOGI(TAG, "UDP Server started successfully on port %d", this->port_);
             }
             
-            int packetSize = udp.parsePacket();
+            int packetSize = udp_->parsePacket();
             
             if (packetSize > 0) {
                 if (packetSize > MAX_PACKET_SIZE) {
@@ -130,19 +143,14 @@ namespace esphome {
                 }
                 
                 uint8_t buffer[MAX_PACKET_SIZE];
-                int len = udp.read(buffer, packetSize);
+                int len = udp_->read(buffer, packetSize);
                 
                 if (len > 0) {
                     buffer[len] = '\0'; // Null-terminate for string safety
                     
-                    // Get remote IP and port
-                    IPAddress remote_addr = udp.remoteIP();
-                    uint16_t remote_port = udp.remotePort();
-                    
-                    // Convert IPAddress to string
-                    char remote_ip_str[16];
-                    snprintf(remote_ip_str, sizeof(remote_ip_str), "%d.%d.%d.%d", 
-                             remote_addr[0], remote_addr[1], remote_addr[2], remote_addr[3]);
+                    // Get remote IP and port from abstraction layer
+                    const char* remote_ip_str = udp_->remoteIP();
+                    uint16_t remote_port = udp_->remotePort();
                     
                     ESP_LOGD(TAG, "Received UDP packet: %d bytes from %s:%d", 
                              len, remote_ip_str, remote_port);
