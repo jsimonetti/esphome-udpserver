@@ -3,8 +3,11 @@
 
 esphome:
   name: udp-server-filtering-example
-  platform: ESP32
+
+esp32:
   board: esp32dev
+  framework:
+    type: arduino 
 
 wifi:
   ssid: "YourSSID"

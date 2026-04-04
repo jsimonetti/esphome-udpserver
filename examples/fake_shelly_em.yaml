@@ -5,9 +5,12 @@
 
 esphome:
   name: udp-server-example
-  platform: ESP32
-  board: esp32dev
 
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino 
+    
 wifi:
   ssid: "YourSSID"
   password: "YourPassword"

@@ -2,40 +2,92 @@
 
 #include <string>
 #include <queue>
+#include <memory>
 
 #include "esphome.h"
 #include "esphome/core/component.h"
 
-#include "WiFiUdp.h"
-
-
-#define TAG "udpserver"
+#if defined(USE_SOCKET_IMPL_BSD_SOCKETS) || defined(USE_SOCKET_IMPL_LWIP_SOCKETS)
+#include "esphome/components/socket/socket.h"
+#endif
 
 namespace esphome {
   namespace udpserver {
     class OnStringDataTrigger;
 
-    // Helper class to store UDP response context
-    class UDPContext {
+    // Maximum UDP packet size without fragmentation (MTU 1500 - IP header 20 - UDP header 8)
+    static constexpr size_t UDP_BUFFER_SIZE = 1472;
+
+    // ============================================================================
+    // UDP Client Abstraction Layer
+    // ============================================================================
+
+    // Structure to hold received packet data
+    struct UDPPacket {
+      uint8_t* data;
+      size_t length;
+      std::string remote_ip;
+      uint16_t remote_port;
+    };
+
+    // Abstract UDP client interface
+    class UDPClient {
     public:
-      UDPContext(WiFiUDP* udp_ptr, const char* ip, uint16_t port) 
-        : udp_(udp_ptr), remote_ip_(ip), remote_port_(port) {}
-      
-      // Send a response back to the sender
-      bool send_response(const std::string& data) {
-        if (!udp_ || !udp_->beginPacket(remote_ip_, remote_port_)) {
-          return false;
-        }
-        udp_->write((const uint8_t*)data.c_str(), data.length());
-        return udp_->endPacket();
-      }
-      
-      const char* get_remote_ip() const { return remote_ip_; }
-      uint16_t get_remote_port() const { return remote_port_; }
+      virtual ~UDPClient() = default;
+      virtual bool begin(uint16_t port) = 0;
+      virtual bool receive_packet(UDPPacket& packet) = 0;
+      virtual bool send_packet(const std::string& data, const std::string& ip, uint16_t port) = 0;
+    };
+
+#ifdef USE_SOCKET_IMPL_LWIP_TCP
+    // Forward declaration for WiFiUDP
+    class WiFiUDP;
+
+    // WiFiUDP implementation
+    class WiFiUDPClient : public UDPClient {
+    public:
+      WiFiUDPClient();
+      ~WiFiUDPClient() override;
+      bool begin(uint16_t port) override;
+      bool receive_packet(UDPPacket& packet) override;
+      bool send_packet(const std::string& data, const std::string& ip, uint16_t port) override;
 
     private:
       WiFiUDP* udp_;
-      const char* remote_ip_;
+      uint8_t buffer_[UDP_BUFFER_SIZE];
+    };
+#endif
+
+#if defined(USE_SOCKET_IMPL_BSD_SOCKETS) || defined(USE_SOCKET_IMPL_LWIP_SOCKETS)
+    // Socket-based implementation
+    class SocketUDPClient : public UDPClient {
+    public:
+      bool begin(uint16_t port) override;
+      bool receive_packet(UDPPacket& packet) override;
+      bool send_packet(const std::string& data, const std::string& ip, uint16_t port) override;
+
+    private:
+      std::unique_ptr<socket::Socket> socket_;
+      uint8_t buffer_[UDP_BUFFER_SIZE];
+    };
+#endif
+
+    // ============================================================================
+    // UDP Server Component
+    // ============================================================================
+
+    // Helper class to store UDP response context
+    class UDPContext {
+    public:
+      UDPContext(UDPClient* client, const std::string& ip, uint16_t port);
+      
+      bool send_response(const std::string& data);
+      const char* get_remote_ip() const { return remote_ip_.c_str(); }
+      uint16_t get_remote_port() const { return remote_port_; }
+
+    private:
+      UDPClient* client_;
+      std::string remote_ip_;
       uint16_t remote_port_;
     };
 
@@ -53,11 +105,10 @@ namespace esphome {
       void set_allow_all_ips(bool allow) { this->allow_all_ips_ = allow; }
 
     protected:
-        void process_(uint8_t *buf, size_t len, const char* remote_ip, uint16_t remote_port);
         bool is_ip_allowed(const char* ip);
 
         uint16_t port_{8888};
-        WiFiUDP udp{};
+        std::unique_ptr<UDPClient> udp_client_;
         std::vector<OnStringDataTrigger *> string_triggers_{};
         std::vector<std::string> allowed_ips_{};
         bool allow_all_ips_{true};
