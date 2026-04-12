@@ -1,4 +1,5 @@
 #pragma once
+#include <WiFiUdp.h>
 
 #include <string>
 #include <queue>
@@ -41,7 +42,6 @@ namespace esphome {
 
 #ifdef USE_SOCKET_IMPL_LWIP_TCP
     // Forward declaration for WiFiUDP
-    class WiFiUDP;
 
     // WiFiUDP implementation
     class WiFiUDPClient : public UDPClient {
