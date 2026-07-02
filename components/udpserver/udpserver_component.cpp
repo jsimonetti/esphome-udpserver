@@ -1,4 +1,5 @@
 #include "udpserver_component.h"
+#include <WiFiUdp.h>
 
 #ifdef USE_WIFI
 #include "esphome/components/wifi/wifi_component.h"
