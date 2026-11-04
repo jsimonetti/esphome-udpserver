@@ -12,6 +12,7 @@ CONF_TEXT_FILTER = "text_filter"
 CONF_FILTER_MODE = "filter_mode"
 
 DEPENDENCIES = ['network']
+AUTO_LOAD = ['socket']
 
 udpserver_ns = cg.esphome_ns.namespace('udpserver')
 UdpserverComponent = udpserver_ns.class_('UdpserverComponent', cg.Component)
