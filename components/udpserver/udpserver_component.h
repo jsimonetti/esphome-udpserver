@@ -1,5 +1,4 @@
 #pragma once
-#include <WiFiUdp.h>
 
 #include <string>
 #include <queue>
@@ -8,7 +7,13 @@
 #include "esphome.h"
 #include "esphome/core/component.h"
 
-#if defined(USE_SOCKET_IMPL_BSD_SOCKETS) || defined(USE_SOCKET_IMPL_LWIP_SOCKETS)
+// ESP8266 has no UDP in ESPHome's socket layer; Arduino's WiFiUDP is always present there.
+// Every other platform/framework (ESP32 Arduino + ESP-IDF, any network type) uses sockets.
+#ifdef USE_ESP8266
+#define UDPSERVER_USE_WIFIUDP
+#include <WiFiUdp.h>
+#else
+#define UDPSERVER_USE_SOCKETS
 #include "esphome/components/socket/socket.h"
 #endif
 
@@ -40,9 +45,7 @@ namespace esphome {
       virtual bool send_packet(const std::string& data, const std::string& ip, uint16_t port) = 0;
     };
 
-#ifdef USE_SOCKET_IMPL_LWIP_TCP
-    // Forward declaration for WiFiUDP
-
+#ifdef UDPSERVER_USE_WIFIUDP
     // WiFiUDP implementation
     class WiFiUDPClient : public UDPClient {
     public:
@@ -58,7 +61,7 @@ namespace esphome {
     };
 #endif
 
-#if defined(USE_SOCKET_IMPL_BSD_SOCKETS) || defined(USE_SOCKET_IMPL_LWIP_SOCKETS)
+#ifdef UDPSERVER_USE_SOCKETS
     // Socket-based implementation
     class SocketUDPClient : public UDPClient {
     public:

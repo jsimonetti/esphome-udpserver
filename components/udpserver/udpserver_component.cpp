@@ -1,5 +1,4 @@
 #include "udpserver_component.h"
-#include <WiFiUdp.h>
 
 #ifdef USE_WIFI
 #include "esphome/components/wifi/wifi_component.h"
@@ -7,10 +6,6 @@
 #ifdef USE_ETHERNET
 #include "esphome/components/ethernet/ethernet_component.h"
 #endif
-#ifdef USE_SOCKET_IMPL_LWIP_TCP
-#include <WiFiUdp.h>
-#endif
-
 namespace esphome {
     namespace udpserver {
 
@@ -20,7 +15,7 @@ namespace esphome {
         // UDP Client Implementations
         // ============================================================================
 
-#ifdef USE_SOCKET_IMPL_LWIP_TCP
+#ifdef UDPSERVER_USE_WIFIUDP
         WiFiUDPClient::WiFiUDPClient() : udp_(new WiFiUDP()) {}
 
         WiFiUDPClient::~WiFiUDPClient() {
@@ -37,10 +32,10 @@ namespace esphome {
                 return false;
             }
 
-            if (packetSize > UDP_BUFFER_SIZE) {
+            if (packetSize > (int)UDP_BUFFER_SIZE - 1) {
                 ESP_LOGW(TAG, "Received packet size %d exceeds maximum %d, truncating", 
-                         packetSize, (int)UDP_BUFFER_SIZE);
-                packetSize = UDP_BUFFER_SIZE;
+                         packetSize, (int)UDP_BUFFER_SIZE - 1);
+                packetSize = UDP_BUFFER_SIZE - 1;
             }
 
             int len = udp_->read(buffer_, packetSize);
@@ -74,7 +69,7 @@ namespace esphome {
         }
 #endif
 
-#if defined(USE_SOCKET_IMPL_BSD_SOCKETS) || defined(USE_SOCKET_IMPL_LWIP_SOCKETS)
+#ifdef UDPSERVER_USE_SOCKETS
         bool SocketUDPClient::begin(uint16_t port) {
             struct sockaddr_storage bind_addr;
             socklen_t bind_addrlen = socket::set_sockaddr_any((struct sockaddr *)&bind_addr, sizeof(bind_addr), port);
@@ -182,14 +177,12 @@ namespace esphome {
             ESP_LOGCONFIG(TAG, "Setting up UDP Server on port %d...", this->port_);
             
             // Create the appropriate UDP client implementation
-#ifdef USE_SOCKET_IMPL_LWIP_TCP
+#ifdef UDPSERVER_USE_WIFIUDP
             udp_client_ = std::unique_ptr<UDPClient>(new WiFiUDPClient());
             ESP_LOGD(TAG, "Using WiFiUDP implementation");
-#elif defined(USE_SOCKET_IMPL_BSD_SOCKETS) || defined(USE_SOCKET_IMPL_LWIP_SOCKETS)
+#else
             udp_client_ = std::unique_ptr<UDPClient>(new SocketUDPClient());
             ESP_LOGD(TAG, "Using Socket implementation");
-#else
-            ESP_LOGE(TAG, "No UDP implementation available");
 #endif
         }
 
